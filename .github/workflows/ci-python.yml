@@ -1,0 +1,43 @@
+name: CI - Python Tests
+
+on:
+  workflow_call:
+    inputs:
+      python-version:
+        description: "Python version to use"
+        type: string
+        default: "3.12"
+      test-path:
+        description: "Path to test directory or file"
+        type: string
+        default: "tests/"
+      install-command:
+        description: "Command to install dependencies"
+        type: string
+        default: "pip install -r requirements.txt"
+      working-directory:
+        description: "Working directory for the project"
+        type: string
+        default: "."
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ${{ inputs.working-directory }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ inputs.python-version }}
+          cache: "pip"
+
+      - name: Install dependencies
+        run: ${{ inputs.install-command }}
+
+      - name: Run tests
+        run: python -m pytest ${{ inputs.test-path }} --tb=short -q

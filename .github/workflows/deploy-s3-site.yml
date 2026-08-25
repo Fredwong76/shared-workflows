@@ -1,0 +1,52 @@
+name: Deploy S3 Site
+
+on:
+  workflow_call:
+    inputs:
+      source-directory:
+        description: "Directory containing the built site files"
+        type: string
+        required: true
+      s3-destination:
+        description: "S3 bucket URI (e.g. s3://my-bucket)"
+        type: string
+        required: true
+      cloudfront-distribution-id:
+        description: "CloudFront distribution ID to invalidate"
+        type: string
+        default: ""
+      aws-region:
+        description: "AWS region"
+        type: string
+        default: "ap-southeast-1"
+    secrets:
+      AWS_DEPLOY_ROLE_ARN:
+        description: "ARN of the IAM role to assume via OIDC"
+        required: true
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ inputs.aws-region }}
+
+      - name: Sync to S3
+        run: aws s3 sync ${{ inputs.source-directory }} ${{ inputs.s3-destination }} --delete
+
+      - name: Invalidate CloudFront cache
+        if: inputs.cloudfront-distribution-id != ''
+        run: |
+          aws cloudfront create-invalidation \
+            --distribution-id ${{ inputs.cloudfront-distribution-id }} \
+            --paths "/*"

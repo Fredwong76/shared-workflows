@@ -1,0 +1,46 @@
+name: Validate CDK
+
+on:
+  workflow_call:
+    inputs:
+      python-version:
+        description: "Python version to use"
+        type: string
+        default: "3.12"
+      cdk-directory:
+        description: "Directory containing the CDK app"
+        type: string
+        default: "cdk"
+      install-command:
+        description: "Command to install CDK dependencies"
+        type: string
+        default: "pip install -r requirements.txt"
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ inputs.python-version }}
+          cache: "pip"
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install AWS CDK CLI
+        run: npm install -g aws-cdk
+
+      - name: Install CDK dependencies
+        working-directory: ${{ inputs.cdk-directory }}
+        run: ${{ inputs.install-command }}
+
+      - name: CDK Synth (validate templates)
+        working-directory: ${{ inputs.cdk-directory }}
+        run: cdk synth --quiet
