@@ -1,0 +1,2 @@
+# shared-workflows
+Reusable GitHub Actions workflow templates for CI/CD automation
