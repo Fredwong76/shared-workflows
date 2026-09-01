@@ -43,4 +43,4 @@ jobs:
 
       - name: CDK Synth (validate templates)
         working-directory: ${{ inputs.cdk-directory }}
-        run: cdk synth --quiet
+        run: cdk synth --no-bundling --quiet
