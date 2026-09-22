@@ -1,5 +1,4 @@
 name: Deploy CDK
-
 on:
   workflow_call:
     inputs:
@@ -19,46 +18,93 @@ on:
         description: "Command to install CDK dependencies"
         type: string
         default: "pip install -r requirements.txt"
+      bundle:
+        description: >-
+          Maps to the TALEMUSE_CDK_BUNDLE env var read by the CDK app. Controls
+          whether each Lambda's per-dir requirements.txt is pip-installed into
+          the deployed asset. Truthy values: "1", "true", "yes", "on". Defaults
+          to "1" (ON): a bundling-OFF deploy ships Lambda source WITHOUT its deps
+          and BOTH synth and deploy report success, so the failure only surfaces
+          at Lambda runtime (Runtime.ImportModuleError) as a SILENT live outage.
+          Keep this ON for real deploys; only set it off intentionally.
+        type: string
+        default: "1"
+      import-check-functions:
+        description: >-
+          Optional space-separated list of deployed Lambda function names to
+          verify actually IMPORT at runtime AFTER deploy. Each function is
+          invoked once; if the response or logs contain "ImportModuleError" or
+          "Unable to import module" the job FAILS, so a bundling-off mistake
+          fails loud in CI instead of silently at Lambda runtime. Empty (default)
+          skips the check, so consumers that do not set it are unaffected.
+        type: string
+        default: ""
     secrets:
       AWS_DEPLOY_ROLE_ARN:
         description: "ARN of the IAM role to assume via OIDC"
         required: true
-
 permissions:
   id-token: write
   contents: read
-
 jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
         uses: actions/checkout@v5
-
       - name: Configure AWS credentials (OIDC)
         uses: aws-actions/configure-aws-credentials@v5
         with:
           role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
           aws-region: ${{ inputs.aws-region }}
-
       - name: Set up Python
         uses: actions/setup-python@v6
         with:
           python-version: ${{ inputs.python-version }}
           cache: "pip"
-
       - name: Set up Node.js
         uses: actions/setup-node@v5
         with:
           node-version: "20"
-
       - name: Install AWS CDK CLI
         run: npm install -g aws-cdk
-
       - name: Install CDK dependencies
         working-directory: ${{ inputs.cdk-directory }}
         run: ${{ inputs.install-command }}
-
       - name: CDK Deploy
         working-directory: ${{ inputs.cdk-directory }}
+        env:
+          TALEMUSE_CDK_BUNDLE: ${{ inputs.bundle }}
         run: cdk deploy --all --require-approval never
+      - name: Verify Lambda runtime imports
+        if: ${{ inputs.import-check-functions != '' }}
+        env:
+          IMPORT_CHECK_FUNCTIONS: ${{ inputs.import-check-functions }}
+        run: |
+          set -euo pipefail
+          fail=0
+          for fn in $IMPORT_CHECK_FUNCTIONS; do
+            echo "Import check: invoking $fn"
+            out="import-check-${fn}.json"
+            # Invoke with a harmless empty payload; a dependency import failure
+            # raises Runtime.ImportModuleError at cold start regardless of payload.
+            aws lambda invoke \
+              --function-name "$fn" \
+              --payload '{}' \
+              --cli-binary-format raw-in-base64-out \
+              "$out" >"invoke-meta-${fn}.json" 2>&1 || true
+            # Inspect BOTH the invocation metadata (FunctionError/errorType) and
+            # the response body for import-module failures.
+            if grep -Eiq "ImportModuleError|Unable to import module" "$out" "invoke-meta-${fn}.json"; then
+              echo "::error::$fn failed to import at runtime (bundling likely OFF)."
+              echo "----- $fn response -----"
+              cat "$out" || true
+              fail=1
+            else
+              echo "$fn imported OK."
+            fi
+          done
+          if [ "$fail" -ne 0 ]; then
+            echo "::error::One or more Lambda functions failed the runtime import check."
+            exit 1
+          fi
