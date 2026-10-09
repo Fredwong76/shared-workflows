@@ -19,6 +19,14 @@ on:
         description: "AWS region"
         type: string
         default: "ap-southeast-1"
+      delete-removed:
+        description: "Pass --delete to remove destination objects not present in source. Destructive; default off."
+        type: boolean
+        default: false
+      include-filters:
+        description: "Optional allowlist. When set, sync uses --exclude '*' then these --include patterns (space-separated, each quoted). Only matching files are synced; everything else in the destination is left untouched. Leave empty to sync the whole source-directory."
+        type: string
+        default: ""
     secrets:
       AWS_DEPLOY_ROLE_ARN:
         description: "ARN of the IAM role to assume via OIDC"
@@ -42,7 +50,26 @@ jobs:
           aws-region: ${{ inputs.aws-region }}
 
       - name: Sync to S3
-        run: aws s3 sync ${{ inputs.source-directory }} ${{ inputs.s3-destination }} --delete
+        env:
+          SRC: ${{ inputs.source-directory }}
+          DEST: ${{ inputs.s3-destination }}
+          DELETE_FLAG: ${{ inputs.delete-removed && '--delete' || '' }}
+          INCLUDE_FILTERS: ${{ inputs.include-filters }}
+        run: |
+          if [ -n "$INCLUDE_FILTERS" ]; then
+            # Allowlist mode: exclude everything, then re-include only the named patterns.
+            # Parse INCLUDE_FILTERS into a bash array via eval so each quoted pattern
+            # becomes a SEPARATE argument WITHOUT its surrounding quotes. A bare
+            # unquoted "$INCLUDE_FILTERS" word-splits but leaves the literal " chars in
+            # each pattern (e.g. --include '"about.html"'), which matches no file and
+            # silently uploads nothing while still exiting 0.
+            echo "Allowlist sync. Filters: $INCLUDE_FILTERS"
+            eval "FILTER_ARGS=($INCLUDE_FILTERS)"
+            aws s3 sync "$SRC" "$DEST" $DELETE_FLAG --exclude "*" "${FILTER_ARGS[@]}"
+          else
+            echo "Full-directory sync."
+            aws s3 sync "$SRC" "$DEST" $DELETE_FLAG
+          fi
 
       - name: Invalidate CloudFront cache
         if: inputs.cloudfront-distribution-id != ''

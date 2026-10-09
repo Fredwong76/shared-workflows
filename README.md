@@ -108,6 +108,7 @@ jobs:
 ## deploy-s3-site.yml
 
 Syncs a static site directory to S3 and optionally invalidates a CloudFront distribution.
+Supports an allowlist mode for selective file sync.
 
 ### Inputs
 
@@ -117,6 +118,8 @@ Syncs a static site directory to S3 and optionally invalidates a CloudFront dist
 | `s3-destination` | string | *(required)* | S3 bucket URI (e.g. `s3://my-bucket`) |
 | `cloudfront-distribution-id` | string | `""` | CloudFront distribution ID (optional) |
 | `aws-region` | string | `ap-southeast-1` | AWS region |
+| `delete-removed` | boolean | `false` | Pass `--delete` to remove destination objects not in source. Destructive; default off. |
+| `include-filters` | string | `""` | Optional allowlist. Space-separated quoted `--include` patterns. When set, syncs only matching files. Leave empty to sync the whole directory. |
 
 ### Secrets
 
@@ -124,7 +127,7 @@ Syncs a static site directory to S3 and optionally invalidates a CloudFront dist
 |--------|----------|-------------|
 | `AWS_DEPLOY_ROLE_ARN` | Yes | ARN of the IAM role to assume via OIDC |
 
-### Example
+### Example (full sync)
 
 ```yaml
 jobs:
@@ -137,6 +140,23 @@ jobs:
     secrets:
       AWS_DEPLOY_ROLE_ARN: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
 ```
+
+### Example (allowlist sync)
+
+```yaml
+jobs:
+  deploy-site:
+    uses: Fredwong76/shared-workflows/.github/workflows/deploy-s3-site.yml@main
+    with:
+      source-directory: "ecupse-site"
+      s3-destination: "s3://my-site-bucket"
+      cloudfront-distribution-id: "E1234ABCDEF"
+      include-filters: '--include "about.html" --include "BingSiteAuth.xml"'
+    secrets:
+      AWS_DEPLOY_ROLE_ARN: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+```
+
+**Breaking change note:** `--delete` is now opt-in via `delete-removed: true`. The previous version always passed `--delete`. Existing callers that rely on delete behavior must add `delete-removed: true`.
 
 ---
 
