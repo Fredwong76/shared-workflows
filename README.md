@@ -28,7 +28,7 @@ Runs pytest on a Python project.
 ### Example
 
 Trigger on `pull_request` and `workflow_dispatch` only. Adding `push` as well runs CI
-twice for every PR branch commit (see ecupse-comms #101). Run CI on the merged result
+twice for every PR branch commit. Run CI on the merged result
 by making the CI job a required status check in branch protection.
 
 ```yaml
@@ -197,16 +197,3 @@ uses: Fredwong76/shared-workflows/.github/workflows/ci-python.yml@v1
 
 Every pull request runs `lint.yml` (actionlint) and `smoke.yml` (fixture runs of
 `ci-python` and `validate-cdk`).
-
-## Adoption status
-
-| Team | Calls canonical `@v1` | Notes |
-|------|----------------------|-------|
-| Penny | planned (canary) | First caller; reference setup |
-| Xyras | not yet | Currently calls a fork; wave 1 of the migration |
-| Talemuse | not yet | Currently calls a fork; wave 2 |
-| AI Diarist | not yet | Currently calls a fork; wave 3 |
-| The Analyst | n/a | Optional `ci-python` only |
-
-Status is maintained by Penny; the migration plan lives in the Penny workspace spec
-`shared-workflows-consolidation`.
