@@ -1,0 +1,22 @@
+name: Smoke test reusable workflows
+
+# Exercises the reusable workflows that need no AWS access against small fixtures.
+# Deploy workflows are validated by the canary and by team workflow_dispatch runs.
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  ci-python:
+    uses: ./.github/workflows/ci-python.yml
+    with:
+      working-directory: fixtures/python-app
+      test-path: tests/
+
+  validate-cdk:
+    uses: ./.github/workflows/validate-cdk.yml
+    with:
+      cdk-directory: fixtures/cdk-app

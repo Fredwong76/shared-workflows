@@ -6,6 +6,14 @@ on:
         description: "Python version to use"
         type: string
         default: "3.12"
+      node-version:
+        description: "Node.js version used to run the CDK CLI"
+        type: string
+        default: "24"
+      cdk-version:
+        description: "Pinned aws-cdk CLI version (bumped by canonical releases)"
+        type: string
+        default: "2.1148.0"
       cdk-directory:
         description: "Directory containing the CDK app"
         type: string
@@ -41,75 +49,106 @@ on:
         description: >-
           Optional space-separated list of deployed Lambda function names to
           verify actually IMPORT at runtime AFTER deploy. Each function is
-          invoked once; if the response or logs contain "ImportModuleError" or
-          "Unable to import module" the job FAILS, so a bundling-off mistake
-          fails loud in CI instead of silently at Lambda runtime. Empty (default)
-          skips the check, so consumers that do not set it are unaffected.
+          invoked once with the payload {}, so its handler RUNS: list only
+          functions that are safe to invoke. If the response or logs contain
+          "ImportModuleError" or "Unable to import module" the job FAILS, so a
+          bundling-off mistake fails loud in CI instead of silently at Lambda
+          runtime. An invoke that itself fails (permissions, missing function)
+          also fails the job. Empty (default) skips the check.
         type: string
         default: ""
     secrets:
       AWS_DEPLOY_ROLE_ARN:
         description: "ARN of the IAM role to assume via OIDC"
         required: true
+
 permissions:
   id-token: write
   contents: read
+
+# Queue deploys per calling repo and stack selection; never cancel a half-applied deploy.
+# github.repository is the CALLER's repo, so different teams never block each other.
+concurrency:
+  group: deploy-cdk-${{ github.repository }}-${{ inputs.stacks }}
+  cancel-in-progress: false
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    timeout-minutes: 60
     steps:
       - name: Checkout code
         uses: actions/checkout@v5
+
       - name: Configure AWS credentials (OIDC)
         uses: aws-actions/configure-aws-credentials@v5
         with:
           role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
           aws-region: ${{ inputs.aws-region }}
+
       - name: Set up Python
         uses: actions/setup-python@v6
         with:
           python-version: ${{ inputs.python-version }}
           cache: "pip"
+
       - name: Set up Node.js
         uses: actions/setup-node@v5
         with:
-          node-version: "20"
+          node-version: ${{ inputs.node-version }}
+
       - name: Install AWS CDK CLI
-        run: npm install -g aws-cdk
+        env:
+          CDK_VERSION: ${{ inputs.cdk-version }}
+        run: npm install -g "aws-cdk@${CDK_VERSION}"
+
       - name: Install CDK dependencies
         working-directory: ${{ inputs.cdk-directory }}
-        run: ${{ inputs.install-command }}
+        env:
+          INSTALL_COMMAND: ${{ inputs.install-command }}
+        run: eval "$INSTALL_COMMAND"
+
       - name: CDK Deploy
         working-directory: ${{ inputs.cdk-directory }}
         env:
           TALEMUSE_CDK_BUNDLE: ${{ inputs.bundle }}
           CDK_STACKS: ${{ inputs.stacks }}
         run: cdk deploy $CDK_STACKS --require-approval never
+
       - name: Verify Lambda runtime imports
         if: ${{ inputs.import-check-functions != '' }}
         env:
           IMPORT_CHECK_FUNCTIONS: ${{ inputs.import-check-functions }}
         run: |
-          set -euo pipefail
+          set -uo pipefail
           fail=0
           for fn in $IMPORT_CHECK_FUNCTIONS; do
             echo "Import check: invoking $fn"
             out="import-check-${fn}.json"
-            # Invoke with a harmless empty payload; a dependency import failure
+            meta="invoke-meta-${fn}.json"
+            err="invoke-err-${fn}.txt"
+            status=0
+            # The handler RUNS with an empty payload; a dependency import failure
             # raises Runtime.ImportModuleError at cold start regardless of payload.
             aws lambda invoke \
               --function-name "$fn" \
               --payload '{}' \
               --cli-binary-format raw-in-base64-out \
-              "$out" >"invoke-meta-${fn}.json" 2>&1 || true
+              "$out" >"$meta" 2>"$err" || status=$?
+            if [ "$status" -ne 0 ]; then
+              echo "::error::$fn: invoke failed (exit $status): $(cat "$err")"
+              fail=1
+              continue
+            fi
             # Inspect BOTH the invocation metadata (FunctionError/errorType) and
             # the response body for import-module failures.
-            if grep -Eiq "ImportModuleError|Unable to import module" "$out" "invoke-meta-${fn}.json"; then
+            if grep -Eiq "ImportModuleError|Unable to import module" "$out" "$meta"; then
               echo "::error::$fn failed to import at runtime (bundling likely OFF)."
               echo "----- $fn response -----"
               cat "$out" || true
               fail=1
             else
+              # Handler errors after a successful import are not import failures.
               echo "$fn imported OK."
             fi
           done

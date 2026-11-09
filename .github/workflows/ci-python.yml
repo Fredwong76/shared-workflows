@@ -20,9 +20,13 @@ on:
         type: string
         default: "."
 
+permissions:
+  contents: read
+
 jobs:
   test:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     defaults:
       run:
         working-directory: ${{ inputs.working-directory }}
@@ -37,7 +41,11 @@ jobs:
           cache: "pip"
 
       - name: Install dependencies
-        run: ${{ inputs.install-command }}
+        env:
+          INSTALL_COMMAND: ${{ inputs.install-command }}
+        run: eval "$INSTALL_COMMAND"
 
       - name: Run tests
-        run: python -m pytest ${{ inputs.test-path }} --tb=short -q
+        env:
+          TEST_PATH: ${{ inputs.test-path }}
+        run: python -m pytest $TEST_PATH --tb=short -q

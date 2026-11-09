@@ -7,6 +7,14 @@ on:
         description: "Python version to use"
         type: string
         default: "3.12"
+      node-version:
+        description: "Node.js version used to run the CDK CLI"
+        type: string
+        default: "24"
+      cdk-version:
+        description: "Pinned aws-cdk CLI version (bumped by canonical releases)"
+        type: string
+        default: "2.1148.0"
       cdk-directory:
         description: "Directory containing the CDK app"
         type: string
@@ -24,9 +32,13 @@ on:
         type: string
         default: "pip install -r requirements.txt -r requirements-dev.txt"
 
+permissions:
+  contents: read
+
 jobs:
   validate:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - name: Checkout code
         uses: actions/checkout@v5
@@ -40,14 +52,18 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v5
         with:
-          node-version: "20"
+          node-version: ${{ inputs.node-version }}
 
       - name: Install AWS CDK CLI
-        run: npm install -g aws-cdk
+        env:
+          CDK_VERSION: ${{ inputs.cdk-version }}
+        run: npm install -g "aws-cdk@${CDK_VERSION}"
 
       - name: Install CDK dependencies
         working-directory: ${{ inputs.cdk-directory }}
-        run: ${{ inputs.install-command }}
+        env:
+          INSTALL_COMMAND: ${{ inputs.install-command }}
+        run: eval "$INSTALL_COMMAND"
 
       - name: CDK Synth (validate templates)
         working-directory: ${{ inputs.cdk-directory }}
@@ -56,7 +72,9 @@ jobs:
       - name: Install test dependencies
         if: ${{ inputs.run-tests }}
         working-directory: ${{ inputs.cdk-directory }}
-        run: ${{ inputs.test-install-command }}
+        env:
+          TEST_INSTALL_COMMAND: ${{ inputs.test-install-command }}
+        run: eval "$TEST_INSTALL_COMMAND"
 
       - name: Run CDK stack tests
         if: ${{ inputs.run-tests }}
