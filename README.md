@@ -83,6 +83,9 @@ Deploys CDK stacks using OIDC-based AWS authentication.
 | `cdk-directory` | string | `cdk` | Directory containing the CDK app |
 | `aws-region` | string | `ap-southeast-1` | AWS region to deploy to |
 | `install-command` | string | `pip install -r requirements.txt` | CDK dependency install command |
+| `bundle` | string | `1` | Sets `TALEMUSE_CDK_BUNDLE`; keep ON for real deploys |
+| `stacks` | string | `--all` | Stacks/flags for `cdk deploy`, e.g. `MyStack --exclusively` |
+| `import-check-functions` | string | `""` | Lambda names to invoke after deploy as an import check |
 
 ### Secrets
 

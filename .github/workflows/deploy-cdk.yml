@@ -29,6 +29,14 @@ on:
           Keep this ON for real deploys; only set it off intentionally.
         type: string
         default: "1"
+      stacks:
+        description: >-
+          Stack selection passed to `cdk deploy`. Defaults to "--all" (unchanged
+          behaviour). Set it when the CDK app holds stacks this caller must NOT
+          deploy, e.g. "AgentPlatformRadio --exclusively". Space-separated stack
+          names and cdk deploy flags; passed through an env var, not inlined.
+        type: string
+        default: "--all"
       import-check-functions:
         description: >-
           Optional space-separated list of deployed Lambda function names to
@@ -75,7 +83,8 @@ jobs:
         working-directory: ${{ inputs.cdk-directory }}
         env:
           TALEMUSE_CDK_BUNDLE: ${{ inputs.bundle }}
-        run: cdk deploy --all --require-approval never
+          CDK_STACKS: ${{ inputs.stacks }}
+        run: cdk deploy $CDK_STACKS --require-approval never
       - name: Verify Lambda runtime imports
         if: ${{ inputs.import-check-functions != '' }}
         env:
