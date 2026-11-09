@@ -4,6 +4,8 @@ Releases are tagged `v1.N.N`; `v1` floats to the latest tested release.
 
 ## Unreleased
 
+## v1.1.0 - 2026-11-09
+
 ### Behavior changes (caller-visible)
 
 - `deploy-s3-site`: `--delete` is no longer always passed. New input `delete-removed`
