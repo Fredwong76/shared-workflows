@@ -48,4 +48,6 @@ jobs:
       - name: Run tests
         env:
           TEST_PATH: ${{ inputs.test-path }}
-        run: python -m pytest $TEST_PATH --tb=short -q
+        run: |
+          # shellcheck disable=SC2086  # test-path may hold several space-separated paths
+          python -m pytest $TEST_PATH --tb=short -q

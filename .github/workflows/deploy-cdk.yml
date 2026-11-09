@@ -113,7 +113,9 @@ jobs:
         env:
           TALEMUSE_CDK_BUNDLE: ${{ inputs.bundle }}
           CDK_STACKS: ${{ inputs.stacks }}
-        run: cdk deploy $CDK_STACKS --require-approval never
+        run: |
+          # shellcheck disable=SC2086  # stacks holds several space-separated names and flags
+          cdk deploy $CDK_STACKS --require-approval never
 
       - name: Verify Lambda runtime imports
         if: ${{ inputs.import-check-functions != '' }}
