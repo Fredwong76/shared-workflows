@@ -58,8 +58,10 @@ Validates AWS CDK templates by running `cdk synth`.
 | `python-version` | string | `3.12` | Python version to use |
 | `cdk-directory` | string | `cdk` | Directory containing the CDK app |
 | `install-command` | string | `pip install -r requirements.txt` | CDK dependency install command |
+| `run-tests` | boolean | `false` | Run CDK stack tests (pytest) from the cdk directory after synth |
+| `test-install-command` | string | `pip install -r requirements.txt -r requirements-dev.txt` | Command to install test dependencies |
 
-### Example
+### Example (synth only)
 
 ```yaml
 jobs:
@@ -68,6 +70,22 @@ jobs:
     with:
       cdk-directory: "cdk"
 ```
+
+### Example (synth + CDK stack tests)
+
+```yaml
+jobs:
+  validate:
+    uses: Fredwong76/shared-workflows/.github/workflows/validate-cdk.yml@main
+    with:
+      cdk-directory: "cdk"
+      run-tests: true
+```
+
+**CDK stack test notes:**
+- Tests run from `cdk/` with `python -m pytest tests/`. The working directory is the CDK directory, so relative asset paths (e.g. `Code.from_asset("../lambdas/preprocessor")`) resolve correctly.
+- No Docker is needed on the runner. Use CDK context `aws:cdk:bundling-stacks: []` in your test fixture to skip Docker asset bundling during synth (the synth step already passes `--no-bundling`).
+- Install dev dependencies (pytest, etc.) via `requirements-dev.txt` in your `cdk/` directory, or override `test-install-command`.
 
 ---
 
