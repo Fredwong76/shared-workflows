@@ -19,6 +19,21 @@ on:
         description: "AWS region"
         type: string
         default: "ap-southeast-1"
+      delete-removed:
+        description: >-
+          Pass --delete to aws s3 sync, removing objects in the destination that
+          are not in the source. Defaults to false (BEHAVIOR CHANGE from earlier
+          versions, which always deleted). Combine with include-filters so only
+          intended keys are ever deleted.
+        type: boolean
+        default: false
+      include-filters:
+        description: >-
+          Optional allowlist, one aws s3 sync include pattern per line. When set,
+          everything is excluded except the listed patterns, and --delete (if
+          enabled) only touches matching keys.
+        type: string
+        default: ""
     secrets:
       AWS_DEPLOY_ROLE_ARN:
         description: "ARN of the IAM role to assume via OIDC"
@@ -31,6 +46,7 @@ permissions:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - name: Checkout code
         uses: actions/checkout@v5
@@ -42,11 +58,31 @@ jobs:
           aws-region: ${{ inputs.aws-region }}
 
       - name: Sync to S3
-        run: aws s3 sync ${{ inputs.source-directory }} ${{ inputs.s3-destination }} --delete
+        env:
+          SRC: ${{ inputs.source-directory }}
+          DEST: ${{ inputs.s3-destination }}
+          DELETE_REMOVED: ${{ inputs.delete-removed }}
+          INCLUDE_FILTERS: ${{ inputs.include-filters }}
+        run: |
+          set -euo pipefail
+          args=()
+          if [ -n "$INCLUDE_FILTERS" ]; then
+            args+=(--exclude "*")
+            mapfile -t patterns <<< "$INCLUDE_FILTERS"
+            for p in "${patterns[@]}"; do
+              [ -n "$p" ] && args+=(--include "$p")
+            done
+          fi
+          if [ "$DELETE_REMOVED" = "true" ]; then
+            args+=(--delete)
+          fi
+          aws s3 sync "$SRC" "$DEST" "${args[@]}"
 
       - name: Invalidate CloudFront cache
         if: inputs.cloudfront-distribution-id != ''
+        env:
+          DISTRIBUTION_ID: ${{ inputs.cloudfront-distribution-id }}
         run: |
           aws cloudfront create-invalidation \
-            --distribution-id ${{ inputs.cloudfront-distribution-id }} \
+            --distribution-id "$DISTRIBUTION_ID" \
             --paths "/*"
